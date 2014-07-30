@@ -11,6 +11,7 @@ import (
 )
 
 type Through func(body string) []string
+type Request chan chan string
 
 var body string
 
@@ -29,20 +30,55 @@ func main() {
 		os.Exit(1)
 	}
 
-	body = Through(urlsUsingPage).BeginWith(seedUrls, nil)
-	http.HandleFunc("/", serveUrl)
+	crawls, requests := CrawlMonitor()
+
+	Through(urlsUsingPage).BeginWith(seedUrls, crawls)
+	http.Handle("/geturl", Request(requests))
 	http.ListenAndServe("0.0.0.0:8000", nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
 }
 
-func (through Through) BeginWith(urls []string, outbuf <-chan []string) string {
-	return through(urls[0])[0]
+func CrawlMonitor() (crawls chan []string, requests chan chan string) {
+	crawls, requests = make(chan []string, 20), make(chan chan string, 5)
+	go func() {
+		urls := make([]string, 0, 10)
+		for {
+			select {
+			case nextList := <-crawls:
+				log.Println("Added to urlList: ", nextList)
+				urls = append(urls, nextList...)
+			case req := <-requests:
+				req <- urls[0]
+				urls = urls[1:]
+				log.Println("New urlList: ", urls)
+			}
+		}
+	}()
+	return
+}
+
+func (requestPool Request) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	urlReq := make(chan string)
+	requestPool <- urlReq
+	log.Println("Request:\n", req)
+	fmt.Fprintf(w, "You got back a: %s", <-urlReq)
+}
+
+func (through Through) BeginWith(urls []string, crawled chan<- []string) {
+	for _, url := range urls {
+		go func() {
+			//TODO(hpxro7): Read http content-body from url
+			dataCrawled := through(url)
+			fmt.Println(dataCrawled)
+			crawled <- dataCrawled
+		}()
+	}
 }
 
 func urlsUsingPage(body string) []string {
-	return []string{"www.google.com"}
+	return []string{"www.google.com", "www.yahoo.com"}
 }
 
 func readSeedUrls(filename string) (seedUrls []string, err error) {
@@ -51,8 +87,4 @@ func readSeedUrls(filename string) (seedUrls []string, err error) {
 		seedUrls = strings.Split(string(contents), "\n")
 	}
 	return
-}
-
-func serveUrl(w http.ResponseWriter, req *http.Request) {
-	fmt.Fprintf(w, "%s", body)
 }
