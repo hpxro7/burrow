@@ -13,15 +13,18 @@ import (
 type Through func(body string) []string
 type Request chan chan string
 
-var body string
+var (
+	seedFilename = flag.String("seed_file", "", "The file containing a url on each line to be used as crawling seeds.")
+)
+
+func init() {
+	flag.Parse()
+}
 
 func main() {
-	seedFilename := flag.String("seed", "",
-		"The file containing a url on each line to be used as crawling seeds.")
-	flag.Parse()
-	if flag.NFlag() != 1 {
-		flag.PrintDefaults()
-		os.Exit(1)
+	if *seedFilename == "" {
+		log.Fatal("Seed filename must be specified")
+		os.Exit(2)
 	}
 
 	seedUrls, err := readSeedUrls(*seedFilename)
