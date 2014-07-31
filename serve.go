@@ -8,10 +8,17 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/hpxro7/picserve/crawl"
 )
 
-type Through func(body string) []string
-type Request chan chan string
+type ServeOn chan chan string
+
+const (
+	updatePoolSize  = 10
+	requestPoolSize = 5
+	urlPoolSize     = 20
+)
 
 var (
 	seedFilename = flag.String("seed_file", "", "The file containing a url on each line to be used as crawling seeds.")
@@ -33,55 +40,44 @@ func main() {
 		os.Exit(1)
 	}
 
-	crawls, requests := CrawlMonitor()
+	crawlPool, requestPool := CrawlMonitor(updatePoolSize, requestPoolSize, urlPoolSize)
 
-	Through(urlsUsingPage).BeginWith(seedUrls, crawls)
-	http.Handle("/geturl", Request(requests))
-	http.ListenAndServe("0.0.0.0:8000", nil)
+	crawl.Through(crawl.UrlsUsingPage).BeginWith(seedUrls, crawlPool)
+	http.Handle("/geturl", ServeOn(requestPool))
+	err = http.ListenAndServe("0.0.0.0:8000", nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
 }
 
-func CrawlMonitor() (crawls chan []string, requests chan chan string) {
-	crawls, requests = make(chan []string, 20), make(chan chan string, 5)
+func CrawlMonitor(crawlBufSize, requestBufSize, maxUrlPoolSize int) (crawls chan []string, requests chan chan string) {
+	crawls, requests = make(chan []string, crawlBufSize), make(chan chan string, requestBufSize)
 	go func() {
-		urls := make([]string, 0, 10)
+		var urls []string
 		for {
-			select {
-			case nextList := <-crawls:
-				log.Println("Added to urlList: ", nextList)
-				urls = append(urls, nextList...)
-			case req := <-requests:
-				req <- urls[0]
-				urls = urls[1:]
-				log.Println("New urlList: ", urls)
+			if len(urls) < maxUrlPoolSize {
+				next := <-crawls
+				urls = append(urls, next...)
+				log.Println("Saved urls:", next)
+			}
+
+			if len(urls) >= 0 {
+				select {
+				case req := <-requests:
+					req <- urls[0]
+					urls = urls[1:]
+				default:
+				}
 			}
 		}
 	}()
 	return
 }
 
-func (requestPool Request) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	urlReq := make(chan string)
-	requestPool <- urlReq
-	log.Println("Request:\n", req)
-	fmt.Fprintf(w, "You got back a: %s", <-urlReq)
-}
-
-func (through Through) BeginWith(urls []string, crawled chan<- []string) {
-	for _, url := range urls {
-		go func() {
-			//TODO(hpxro7): Read http content-body from url
-			dataCrawled := through(url)
-			fmt.Println(dataCrawled)
-			crawled <- dataCrawled
-		}()
-	}
-}
-
-func urlsUsingPage(body string) []string {
-	return []string{"www.google.com", "www.yahoo.com"}
+func (requestPool ServeOn) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	urlRequest := make(chan string)
+	requestPool <- urlRequest
+	fmt.Fprintf(w, "You got back a: %s", <-urlRequest)
 }
 
 func readSeedUrls(filename string) (seedUrls []string, err error) {
