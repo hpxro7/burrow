@@ -14,9 +14,9 @@ import (
 type ServeOn chan chan string
 
 const (
-	updatePoolSize  = 80
-	requestPoolSize = 40
-	urlPoolSize     = 85
+	updatePoolSize  = 120
+	requestPoolSize = 20
+	urlPoolSize     = 150
 )
 
 var (
@@ -40,7 +40,7 @@ func main() {
 
 	crawlPool, requestPool := CrawlMonitor(updatePoolSize, requestPoolSize, urlPoolSize)
 
-	crawl.Through(crawl.UrlsUsingPage).BeginWith(seedUrls, crawlPool)
+	crawl.Through(crawl.UrlsUsingAnchor).BeginWith(seedUrls, crawlPool)
 	http.Handle("/geturl", ServeOn(requestPool))
 	err = http.ListenAndServe("0.0.0.0:8000", nil)
 	if err != nil {
@@ -80,7 +80,7 @@ func CrawlMonitor(crawlBufSize, requestBufSize, maxUrlPoolSize int) (crawls chan
 func (requestPool ServeOn) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	urlRequest := make(chan string)
 	requestPool <- urlRequest
-	fmt.Fprintf(w, "You got back a: %s", <-urlRequest)
+	fmt.Fprint(w, <-urlRequest)
 }
 
 func readSeedUrls(filename string) (seedUrls []string, err error) {

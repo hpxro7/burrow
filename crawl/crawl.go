@@ -4,21 +4,29 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"regexp"
 )
 
 type Through func(body string) []string
 
+var (
+	anchorMatcher = regexp.MustCompile("<a href ?= ?\"(https?://.+?)\"")
+)
+
 func (through Through) BeginWith(urls []string, crawled chan<- string) {
 	for _, url := range urls {
-		go func() {
-			uriContents, err := getContents(url)
-			if err == nil {
-				newUrls := through(uriContents)
-				for _, newUrl := range newUrls {
-					crawled <- newUrl
-				}
-			}
-		}()
+		go recurse(url, crawled, through)
+	}
+}
+
+func recurse(url string, crawled chan<- string, through Through) {
+	uriContents, err := getContents(url)
+	if err == nil {
+		newUrls := through(uriContents)
+		for _, newUrl := range newUrls {
+			crawled <- newUrl
+			go recurse(newUrl, crawled, through)
+		}
 	}
 }
 
@@ -39,6 +47,13 @@ func getContents(uri string) (content string, err error) {
 	return
 }
 
-func UrlsUsingPage(body string) (urls []string) {
-	return []string{body}
+func UrlsUsingAnchor(body string) (next []string) {
+	found := anchorMatcher.FindAllStringSubmatch(body, -1)
+
+	for _, submatch := range found {
+		if len(submatch) > 1 {
+			next = append(next, submatch[1:]...)
+		}
+	}
+	return
 }
