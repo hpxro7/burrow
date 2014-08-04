@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/hpxro7/picserve/crawl"
@@ -15,9 +14,9 @@ import (
 type ServeOn chan chan string
 
 const (
-	updatePoolSize  = 10
-	requestPoolSize = 5
-	urlPoolSize     = 20
+	updatePoolSize  = 80
+	requestPoolSize = 40
+	urlPoolSize     = 85
 )
 
 var (
@@ -30,14 +29,13 @@ func init() {
 
 func main() {
 	if *seedFilename == "" {
+		flag.PrintDefaults()
 		log.Fatal("Seed filename must be specified")
-		os.Exit(2)
 	}
 
 	seedUrls, err := readSeedUrls(*seedFilename)
 	if err != nil {
 		log.Fatal("Could not read file")
-		os.Exit(1)
 	}
 
 	crawlPool, requestPool := CrawlMonitor(updatePoolSize, requestPoolSize, urlPoolSize)
@@ -50,22 +48,27 @@ func main() {
 	}
 }
 
-func CrawlMonitor(crawlBufSize, requestBufSize, maxUrlPoolSize int) (crawls chan []string, requests chan chan string) {
-	crawls, requests = make(chan []string, crawlBufSize), make(chan chan string, requestBufSize)
+func CrawlMonitor(crawlBufSize, requestBufSize, maxUrlPoolSize int) (crawls chan string, requests chan chan string) {
+	crawls, requests = make(chan string, crawlBufSize), make(chan chan string, requestBufSize)
 	go func() {
 		var urls []string
 		for {
 			if len(urls) < maxUrlPoolSize {
-				next := <-crawls
-				urls = append(urls, next...)
-				log.Println("Saved urls:", next)
+				select {
+				case next := <-crawls:
+					urls = append(urls, next)
+					log.Println("Read into pool. New pool size: ", len(urls))
+				default:
+				}
 			}
 
-			if len(urls) >= 0 {
+			if len(urls) > 0 {
 				select {
 				case req := <-requests:
+					log.Println("Serving request...")
 					req <- urls[0]
 					urls = urls[1:]
+					log.Println("...request served!")
 				default:
 				}
 			}
