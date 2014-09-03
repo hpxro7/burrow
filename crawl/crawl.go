@@ -1,3 +1,4 @@
+// Package crawl implements a simple library for crawling through linked document entities.
 package crawl
 
 import (
@@ -7,12 +8,15 @@ import (
 	"regexp"
 )
 
+// Through encapsulates a process for collecting outbound resource identifiers within a given document
+// body.
 type Through func(body string) []string
 
 var (
 	anchorMatcher = regexp.MustCompile("<a href ?= ?\"(https?://.+?)\"")
 )
 
+// BeginWith sends found outbound URIs through crawled using urls as a seed.
 func (through Through) BeginWith(urls []string, crawled chan<- string) {
 	for _, url := range urls {
 		go recurse(url, crawled, through)
@@ -47,6 +51,7 @@ func getContents(uri string) (content string, err error) {
 	return
 }
 
+// UrlsUsingAnchor returns all anchor hrefs found in a given document body.
 func UrlsUsingAnchor(body string) (next []string) {
 	found := anchorMatcher.FindAllStringSubmatch(body, -1)
 

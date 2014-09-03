@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/hpxro7/picserve/crawl"
+	"github.com/hpxro7/burrow/crawl"
 )
 
 type ServeOn chan chan string
@@ -16,7 +16,7 @@ type ServeOn chan chan string
 const (
 	updatePoolSize  = 120
 	requestPoolSize = 20
-	urlPoolSize     = 150
+	urlSinkSize     = 150
 )
 
 var (
@@ -38,9 +38,9 @@ func main() {
 		log.Fatal("Could not read file")
 	}
 
-	crawlPool, requestPool := CrawlMonitor(updatePoolSize, requestPoolSize, urlPoolSize)
+	crawledUrlSink, requestPool := CrawlMonitor(updatePoolSize, requestPoolSize, urlSinkSize)
 
-	crawl.Through(crawl.UrlsUsingAnchor).BeginWith(seedUrls, crawlPool)
+	crawl.Through(crawl.UrlsUsingAnchor).BeginWith(seedUrls, crawledUrlSink)
 	http.Handle("/geturl", ServeOn(requestPool))
 	err = http.ListenAndServe("0.0.0.0:8000", nil)
 	if err != nil {
@@ -48,16 +48,16 @@ func main() {
 	}
 }
 
-func CrawlMonitor(crawlBufSize, requestBufSize, maxUrlPoolSize int) (crawls chan string, requests chan chan string) {
-	crawls, requests = make(chan string, crawlBufSize), make(chan chan string, requestBufSize)
+func CrawlMonitor(crawlBufSize, requestBufSize, maxUrlSinkSize int) (crawled chan string, requests chan chan string) {
+	crawled, requests = make(chan string, crawlBufSize), make(chan chan string, requestBufSize)
 	go func() {
 		var urls []string
 		for {
-			if len(urls) < maxUrlPoolSize {
+			if len(urls) < maxUrlSinkSize {
 				select {
-				case next := <-crawls:
+				case next := <-crawled:
 					urls = append(urls, next)
-					log.Println("Read into pool. New pool size: ", len(urls))
+					log.Println("Read into sink. New sink size: ", len(urls))
 				default:
 				}
 			}
