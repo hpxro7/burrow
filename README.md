@@ -1,7 +1,7 @@
 Burrow
 ======
 
-> Because Gophers don't crawl. They burrow.
+> Because gophers don't crawl. They burrow.
 
 An experiment in writing a document crawler in Go.
 
