@@ -52,12 +52,17 @@ func CrawlMonitor(crawlBufSize, requestBufSize, maxUrlSinkSize int) (crawled cha
 	crawled, requests = make(chan string, crawlBufSize), make(chan chan string, requestBufSize)
 	go func() {
 		var urls []string
+		visited := make(map[string]bool)
+
 		for {
 			if len(urls) < maxUrlSinkSize {
 				select {
 				case next := <-crawled:
-					urls = append(urls, next)
-					log.Println("Read into sink. New sink size: ", len(urls))
+					if !visited[next] {
+						urls = append(urls, next)
+						visited[next] = true
+						log.Println("Read into sink. New sink size: ", len(urls))
+					}
 				default:
 				}
 			}
